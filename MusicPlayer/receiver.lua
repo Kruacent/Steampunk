@@ -161,69 +161,12 @@ end
 function httpLoop()
 	while true do
 		parallel.waitForAny(
-			-- Succès (téléchargement OU recherche)
+			-- Succès (téléchargement de chanson)
 			function()
 				local event, url, handle = os.pullEvent("http_success")
 
-				-- --- C'EST UN RÉSULTAT DE RECHERCHE ---
-				if url == last_search_url then
-					local results = textutils.unserialiseJSON(handle.readAll())
-					handle.close()
-
-					if results and #results > 0 then
-						local song = results[1] -- On prend le premier résultat
-						print("Recherche OK: " .. song.name)
-
-						-- Gérer les playlists (les "déplier")
-						local songs_to_add = {}
-						if song.type == "playlist" and song.playlist_items then
-							for i = 1, #song.playlist_items do
-								table.insert(songs_to_add, song.playlist_items[i])
-							end
-							print("(Contient " .. #songs_to_add .. " chansons)")
-						else
-							table.insert(songs_to_add, song)
-						end
-
-						-- Exécuter l'action demandée par Rednet
-						if search_action == "play_now" then
-							-- Arrêter la musique actuelle
-							for _, speaker in ipairs(speakers) do speaker.stop() end
-							os.queueEvent("playback_stopped")
-							if player_handle then player_handle.close() end
-							
-							now_playing = songs_to_add[1]
-							table.remove(songs_to_add, 1)
-							queue = songs_to_add
-							
-							playing = true
-							playing_id = nil -- Force le re-téléchargement
-							os.queueEvent("audio_update")
-
-						elseif search_action == "play_next" then
-							for i = #songs_to_add, 1, -1 do
-								table.insert(queue, 1, songs_to_add[i])
-							end
-							
-						elseif search_action == "add_to_queue" then
-							for i = 1, #songs_to_add do
-								table.insert(queue, songs_to_add[i])
-							end
-						end
-						
-						-- Si arrêté, démarrer la lecture
-						if not playing and not now_playing then
-							playing = true
-							os.queueEvent("audio_update")
-						end
-					else
-						print("Erreur: La recherche n'a donné aucun résultat.")
-					end
-					search_action = nil
-					last_search_url = nil
-
-				-- --- C'EST UN TÉLÉCHARGEMENT DE CHANSON ---
-				elseif url == last_download_url then
+                -- On ne vérifie QUE le téléchargement
+				if url == last_download_url then
 					print("Chargement terminé.")
 					is_loading = false
 					player_handle = handle
@@ -231,15 +174,15 @@ function httpLoop()
 					size = 16 * 1024 - 4
 					playing_status = 1 -- Prêt à décoder
 					os.queueEvent("audio_update")
-				end
+				else
+                    -- Requête inconnue (au cas où, fermer le handle)
+                    if handle then handle.close() end
+                end
 			end,
-			-- Echec (téléchargement OU recherche)
+            
+			-- Echec (téléchargement de chanson)
 			function()
 				local event, url = os.pullEvent("http_failure")	
-				if url == last_search_url then
-					print("Erreur: Echec de la requête de recherche.")
-					search_action = nil
-				end
 				if url == last_download_url then
 					print("Erreur: Echec du téléchargement.")
 					is_loading = false
